@@ -1,0 +1,7 @@
+dist
+pnpm-lock.yaml
+# Kept identical to the ha_eauidf repository.
+renovate.json5
+# yamllint is the authority for YAML here; it wants two spaces before comments.
+.github
+.yamllint.yml

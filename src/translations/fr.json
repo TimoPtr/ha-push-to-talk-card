@@ -1,0 +1,21 @@
+{
+  "name": "Appuyer pour parler",
+  "button.talk": "Parler",
+  "button.connecting": "Connexion…",
+  "button.stop": "Arrêter",
+  "reason.not_secure": "Votre navigateur bloque le microphone, car votre connexion à Home Assistant n'est pas sécurisée par HTTPS. Utilisez l'application Home Assistant ou configurez une connexion sécurisée.",
+  "reason.microphone_denied": "L'accès au microphone a été refusé. Autorisez-le dans les paramètres de votre navigateur ou de votre appareil, puis appuyez de nouveau pour parler à cette caméra.",
+  "error.microphone_failed": "Impossible d'accéder au microphone : {message}",
+  "error.start_failed": "Impossible de se connecter à la caméra : {message}",
+  "error.connection_failed": "Impossible de se connecter à la caméra.",
+  "error.connection_lost": "La connexion à la caméra a été perdue.",
+  "error.timeout": "La caméra a mis trop de temps à répondre.",
+  "error.not_supported": "WebRTC n'est pas pris en charge par ce navigateur.",
+  "error.app_microphone_denied": "L'accès au microphone est nécessaire pour parler à la caméra. Vous pouvez l'autoriser dans les paramètres de votre appareil.",
+  "error.app_server_unavailable": "Impossible de se connecter à Home Assistant.",
+  "error.app_signaling_failed": "La caméra n'a pas pu démarrer le flux du microphone.",
+  "error.app_connection_failed": "Impossible de connecter le microphone à la caméra.",
+  "error.app_timeout": "La caméra a mis trop de temps à répondre.",
+  "error.app_unsupported_stream_type": "Cette version de l'application Home Assistant ne permet pas de parler aux caméras. Mettez à jour l'application et réessayez.",
+  "error.app_unknown": "Erreur de l'application Home Assistant : {message}"
+}

@@ -1,0 +1,5 @@
+{
+  "name": "Push to talk tile feature",
+  "filename": "ha-push-to-talk-card.js",
+  "homeassistant": "2026.11.0"
+}
