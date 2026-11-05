@@ -1,6 +1,8 @@
 import { defineConfig } from "vitest/config";
+import { waitEndpoint } from "./dev/wait-plugin";
 
 export default defineConfig({
+  plugins: [waitEndpoint()],
   build: {
     lib: {
       entry: "src/index.ts",

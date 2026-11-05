@@ -460,6 +460,12 @@ export class PushToTalkCardFeature extends LitElement {
       --control-button-group-thickness: var(--feature-height, 42px);
     }
 
+    /* The group spaces its children with margins; this one fills the row. */
+    ha-control-button,
+    .waves {
+      margin: 0;
+    }
+
     ha-control-button {
       flex: 1;
       width: 100%;
