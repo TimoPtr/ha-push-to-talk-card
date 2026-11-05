@@ -8,6 +8,14 @@ Home Assistant 2026.11 added two-way audio for cameras, but only inside the came
 
 It is audio only. No video is requested or shown.
 
+## Screenshots
+
+| Ready                                                                                                                                                                                 | Connecting                                                                                                                                                                                                        | Talking                                                                                                                                                                                               | Can't talk                                                                                                                                                                                                              |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/idle-dark.png"><img src="docs/images/idle-light.png" alt="A tile with a Talk button" width="200"></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/connecting-dark.png"><img src="docs/images/connecting-light.png" alt="The button shows a spinner and Connecting" width="200"></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/talking-dark.png"><img src="docs/images/talking-light.png" alt="The button is filled and shows Stop" width="200"></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/cant-talk-dark.png"><img src="docs/images/cant-talk-light.png" alt="The button is muted with a crossed-out microphone" width="200"></picture> |
+
+The button is taken from the development harness, which draws a stand-in for the tile around it. In Home Assistant the tile card draws the header, so the icon, name and state are those of your own entity.
+
 ## Requirements
 
 - Home Assistant 2026.11 or newer.

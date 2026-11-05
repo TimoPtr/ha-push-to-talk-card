@@ -8,6 +8,7 @@
  *
  * `hold` delays the page's load event by that many milliseconds, so a headless
  * browser's --screenshot or --dump-dom captures the scenario once it settled.
+ * `clean` shows the tile alone, for README screenshots (window 290 by 190).
  */
 import { mdiVideo } from "@mdi/js";
 import { css, html, LitElement } from "lit";
@@ -305,6 +306,7 @@ if (params.has("hold")) {
 }
 
 document.documentElement.dataset.theme = params.get("theme") ?? "light";
+document.documentElement.toggleAttribute("data-clean", params.has("clean"));
 if (params.has("width")) {
   document.documentElement.style.setProperty(
     "--tile-width",
