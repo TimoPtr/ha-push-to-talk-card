@@ -1,0 +1,36 @@
+{
+  "name": "ha-push-to-talk-card",
+  "version": "0.0.0",
+  "description": "Push-to-talk feature for the Home Assistant tile card",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "packageManager": "pnpm@12.15.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "vite build",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . && prettier --check .",
+    "format": "eslint --fix . && prettier --write .",
+    "dev:harness": "vite --host 0.0.0.0 --port 4173"
+  },
+  "dependencies": {
+    "@mdi/js": "7.4.47",
+    "lit": "3.3.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.6.6",
+    "eslint": "10.13.0",
+    "eslint-config-prettier": "^10.1.8",
+    "jsdom": "30.1.3",
+    "prettier": "3.9.10",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.0",
+    "vite": "8.3.5",
+    "vitest": "5.0.5"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "name": "ha-push-to-talk-card",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:24",
+  "postCreateCommand": "corepack enable && pnpm install",
+  "forwardPorts": [4173],
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "runem.lit-plugin"
+      ]
+    }
+  }
+}

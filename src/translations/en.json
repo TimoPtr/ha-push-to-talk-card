@@ -1,0 +1,23 @@
+{
+  "name": "Push to talk",
+  "button.talk": "Talk",
+  "button.connecting": "Connecting…",
+  "button.stop": "Stop",
+  "reason.no_camera": "Select a camera in the settings of this feature to talk.",
+  "reason.not_supported": "This camera does not support two-way audio, or the two-way audio preview feature is turned off in Labs.",
+  "reason.not_secure": "Your browser blocks the microphone because your connection to Home Assistant is not secured using HTTPS. Use the Home Assistant app, or set up a secure connection.",
+  "reason.microphone_denied": "Microphone access was denied. Allow it in your browser settings to talk to this camera.",
+  "error.microphone_failed": "Could not access the microphone: {message}",
+  "error.start_failed": "Could not connect to the camera: {message}",
+  "error.connection_failed": "Unable to connect to the camera.",
+  "error.connection_lost": "The connection to the camera was lost.",
+  "error.timeout": "The camera took too long to respond.",
+  "error.not_supported": "WebRTC is not supported in this browser.",
+  "error.app_microphone_denied": "Microphone access is needed to talk to the camera. You can allow it in your device settings.",
+  "error.app_server_unavailable": "Unable to connect to Home Assistant.",
+  "error.app_signaling_failed": "The camera could not start the microphone stream.",
+  "error.app_connection_failed": "Unable to connect the microphone to the camera.",
+  "error.app_timeout": "The camera took too long to respond.",
+  "error.app_unsupported_stream_type": "This version of the Home Assistant app doesn't support talking to cameras. Update the app and try again.",
+  "error.app_unknown": "Home Assistant app error: {message}"
+}
