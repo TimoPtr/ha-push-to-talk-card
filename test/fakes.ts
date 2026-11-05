@@ -189,3 +189,48 @@ export class FakePeerConnection extends EventTarget {
     this.dispatchEvent(event);
   }
 }
+
+type BusMessage = { type: string; payload?: unknown };
+
+export interface FakeExternalBus extends ExternalBus {
+  /** sendMessage calls, in order. */
+  sent: BusMessage[];
+  /** fireMessage calls, in order. */
+  fired: BusMessage[];
+  /** Settles the oldest pending webrtc/stream/start. */
+  resolveStart(sessionId: string): void;
+  rejectStart(error: { code: string; message: string }): void;
+}
+
+export function fakeExternalBus(
+  init: { supported?: boolean } = {},
+): FakeExternalBus {
+  const pending: Array<{
+    resolve(value: unknown): void;
+    reject(error: unknown): void;
+  }> = [];
+  const bus: FakeExternalBus = {
+    config:
+      (init.supported ?? true)
+        ? { webrtc: { hasCameraMicrophoneStream: true } }
+        : {},
+    sent: [],
+    fired: [],
+    sendMessage<T>(message: BusMessage) {
+      bus.sent.push(message);
+      return new Promise<T>((resolve, reject) => {
+        pending.push({ resolve: resolve as (value: unknown) => void, reject });
+      });
+    },
+    fireMessage(message) {
+      bus.fired.push(message);
+    },
+    resolveStart(sessionId) {
+      pending.shift()?.resolve({ session_id: sessionId });
+    },
+    rejectStart(error) {
+      pending.shift()?.reject(error);
+    },
+  };
+  return bus;
+}

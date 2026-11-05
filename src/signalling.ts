@@ -4,7 +4,7 @@ import {
   subscribeWebRtcOffer,
   type WebRtcOfferEvent,
 } from "./camera-api";
-import { TalkError } from "./errors";
+import { messageOf, TalkError } from "./errors";
 import type { HomeAssistant } from "./ha-types";
 
 /** How long a camera gets to answer and connect before the start is given up. */
@@ -27,9 +27,6 @@ export interface AudioConnection {
   /** Idempotent. Afterwards no callback fires and `ready` never settles. */
   close(): void;
 }
-
-const messageOf = (error: unknown) =>
-  error instanceof Error ? error.message : String(error);
 
 /**
  * Opens an audio-only WebRTC connection to a camera through Home Assistant.

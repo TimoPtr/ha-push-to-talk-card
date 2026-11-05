@@ -25,3 +25,9 @@ export class TalkError extends Error {
     this.name = "TalkError";
   }
 }
+
+/** The message of anything that was thrown, including errors from another realm. */
+export function messageOf(error: unknown): string {
+  const message = (error as { message?: unknown } | null | undefined)?.message;
+  return typeof message === "string" ? message : String(error);
+}
