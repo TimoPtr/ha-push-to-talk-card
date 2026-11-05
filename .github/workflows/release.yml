@@ -5,12 +5,19 @@ on:  # yamllint disable-line rule:truthy
   release:
     types: [published]
 
-permissions:
-  contents: write
+# One run per release; a run that started is left to finish its upload.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+permissions: {}
 
 jobs:
   attach-bundle:
+    name: Attach the built file
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # upload the built file to the release
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -19,7 +26,8 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
         with:
           node-version-file: .nvmrc
-          cache: pnpm
+          # No cache: a release must not be built from restored files.
+          package-manager-cache: false
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Build
