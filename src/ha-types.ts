@@ -45,8 +45,7 @@ export interface FeatureContext {
   area_id?: string;
 }
 
+/** No setting of its own: the camera is the host card's entity. */
 export interface PushToTalkFeatureConfig {
   type: string;
-  /** The camera to talk to. Defaults to the host card's entity when that is a camera. */
-  entity?: string;
 }

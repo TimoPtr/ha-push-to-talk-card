@@ -2,9 +2,9 @@
 
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?category=plugin&repository=ha-push-to-talk-card&owner=timoptr)
 
-A talk button for the Home Assistant [tile card](https://www.home-assistant.io/dashboards/tile/). One tap opens an audio connection to a camera, so you hear the camera and the camera hears you. Another tap hangs up.
+A talk button for the Home Assistant [tile card](https://www.home-assistant.io/dashboards/tile/) of a camera. One tap opens an audio connection to the camera, so you hear the camera and the camera hears you. Another tap hangs up.
 
-Home Assistant 2026.11 added two-way audio for cameras, but only inside the camera's more-info dialog. This feature puts it on your dashboard, on any tile: the camera's own tile, the tile of the lock next to it, or anything else.
+Home Assistant 2026.11 added two-way audio for cameras, but only inside the camera's more-info dialog. This feature puts it on your dashboard, on the camera's tile.
 
 It is audio only. No video is requested or shown.
 
@@ -48,34 +48,23 @@ Or add it manually:
 
 ## Usage
 
-In the tile card editor:
+In the editor of a tile card for a camera:
 
 1. Open **Features** and select **Add feature**.
 2. Pick **Push to talk**.
-3. Select the edit button of the feature and choose the camera to talk to. On a tile for a camera you can leave it empty: the tile's own camera is used.
 
 Or in YAML:
 
 ```yaml
-# On a tile for something else: say which camera to talk to
-type: tile
-entity: lock.front_door
-features:
-  - type: custom:push-to-talk-card-feature
-    entity: camera.front_door
-```
-
-```yaml
-# On a tile for the camera itself: no setting needed
 type: tile
 entity: camera.front_door
 features:
   - type: custom:push-to-talk-card-feature
 ```
 
-| Option   | Description                                                             |
-| -------- | ----------------------------------------------------------------------- |
-| `entity` | The camera to talk to. Optional when the tile's own entity is a camera. |
+The feature has no settings: it talks to the tile's own camera.
+
+Like the built-in features, it only works on a tile it fits. **Push to talk** is offered on a tile for a camera that supports two-way audio. On any other tile it is not in the list, and it draws nothing if you add it in YAML. This is also what you see when the preview feature is turned off in Labs.
 
 The button is filled with the tile's `color` while you talk, or with your theme's primary color when the tile has none.
 
@@ -98,15 +87,14 @@ There is no time limit.
 
 ### When the button is muted
 
-A muted button with a crossed-out microphone means talking is not possible right now. Tap it to read why:
+A muted button with a crossed-out microphone means the camera supports talking, but it is not possible right now. Tap it to read why:
 
-- no camera is selected, or the selected camera no longer exists;
-- the camera does not support two-way audio, or the preview feature is turned off in Labs;
 - Home Assistant is not opened over HTTPS and you are not in a version of the Home Assistant app that can send the microphone;
 - you refused access to the microphone. Allow it in your browser or device settings and tap again.
 
 ## Limitations
 
+- The feature list of the editor can be a few seconds behind. Home Assistant only tells whether a camera supports two-way audio when asked, so right after opening the editor, or right after turning the preview feature on in Labs, **Push to talk** can be offered on a camera that does not support it, or be missing on one that does. It corrects itself after a few seconds; if it does not, close and open the editor again.
 - The request sent to the camera is audio only. A camera that insists on video in the request will refuse it, and you will see "Could not connect to the camera".
 - The button is a toggle. There is no hold-to-talk.
 

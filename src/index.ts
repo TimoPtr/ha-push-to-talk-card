@@ -1,3 +1,4 @@
+import { supportsPushToTalkCardFeature } from "./capabilities";
 import type { FeatureContext, HomeAssistant } from "./ha-types";
 import { localize } from "./localize";
 import {
@@ -28,9 +29,8 @@ export function register(): void {
       type: FEATURE_TAG,
       // The list of features is built once, before the user's language is known here.
       name: localize(undefined, "name"),
-      // Offered on every tile: the camera to talk to is the feature's own setting.
-      isSupported: () => true,
-      configurable: true,
+      // Offered on a tile for a camera that supports two-way audio.
+      isSupported: supportsPushToTalkCardFeature,
     });
   }
 }

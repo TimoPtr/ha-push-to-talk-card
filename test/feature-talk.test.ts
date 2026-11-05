@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { HomeAssistant } from "../src/ha-types";
+import { resetKnownCapabilities } from "../src/capabilities";
+import type { FeatureContext, HomeAssistant } from "../src/ha-types";
 import "../src/index";
 import { localize } from "../src/localize";
 import { resetMicrophoneDenied } from "../src/microphone";
@@ -23,7 +24,7 @@ const level = vi.hoisted(() => ({
 vi.mock("../src/audio-level", () => ({ watchAudioLevel: level.watch }));
 
 const TYPE = "custom:push-to-talk-card-feature";
-const CONFIG = { type: TYPE, entity: "camera.door" };
+const DOOR: FeatureContext = { entity_id: "camera.door" };
 
 class FakeMediaStream {
   constructor(private readonly _tracks: MediaStreamTrack[]) {}
@@ -48,10 +49,12 @@ const doorHass = (init: Parameters<typeof fakeHass>[0] = {}) =>
     ...init,
   });
 
-async function mount(hass: HomeAssistant, config = CONFIG) {
+/** Puts the feature on a tile: by default the tile of the door camera. */
+async function mount(hass: HomeAssistant, context: FeatureContext = DOOR) {
   const el = document.createElement(FEATURE_TAG) as PushToTalkCardFeature;
-  el.setConfig(config);
+  el.setConfig({ type: TYPE });
   el.hass = hass;
+  el.context = context;
   document.body.append(el);
   await settle(el);
   return el;
@@ -139,6 +142,7 @@ afterEach(() => {
   document.body.removeEventListener("hass-notification", onToast);
   document.body.replaceChildren();
   resetMicrophoneDenied();
+  resetKnownCapabilities();
   vi.unstubAllGlobals();
   setVisibility("visible");
   delete (navigator as { mediaDevices?: unknown }).mediaDevices;
@@ -268,7 +272,7 @@ describe("talking", () => {
     await vi.waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(1));
   });
 
-  it("explains instead of starting when early capabilities say no", async () => {
+  it("does not start when early capabilities say no, and the button goes away", async () => {
     const hass = doorHass();
     let release!: (value: unknown) => void;
     hass.respond(
@@ -279,8 +283,11 @@ describe("talking", () => {
     button(el).click();
     release({ frontend_stream_types: ["web_rtc"], two_way_audio: false });
     await settle(el);
+    await settle(el);
     expect(getUserMedia).not.toHaveBeenCalled();
-    expect(toasts).toEqual([localize(hass, "reason.not_supported")]);
+    expect(state(el)).toBe("unsupported");
+    expect(el.shadowRoot!.querySelector("#talk")).toBeNull();
+    expect(toasts).toEqual([]);
   });
 
   it("does not start in a page that was hidden while it waited", async () => {
@@ -400,16 +407,45 @@ describe("stop conditions", () => {
     el.hass = { ...hass, states: { "lock.door": hass.states["lock.door"] } };
     await settle(el);
     expect(ended()).toBe(true);
-    expect(state(el)).toBe("cant-talk");
+    expect(state(el)).toBe("unsupported");
     expect(toasts).toEqual([]);
   });
 
-  it("stops when the configured camera changes", async () => {
+  it("stops when the tile's camera changes", async () => {
     const { el, ended } = await talking();
-    el.setConfig({ type: TYPE, entity: "camera.yard" });
+    el.context = { entity_id: "camera.yard" };
     await settle(el);
     expect(ended()).toBe(true);
     expect(state(el)).toBe("idle");
+    expect(toasts).toEqual([]);
+  });
+
+  it("stops when the tile is no longer for a camera", async () => {
+    const { el, ended } = await talking();
+    el.context = { entity_id: "lock.door" };
+    await settle(el);
+    expect(ended()).toBe(true);
+    expect(state(el)).toBe("unsupported");
+    expect(toasts).toEqual([]);
+  });
+
+  it("stops when the camera turns out to have no two-way audio any more", async () => {
+    const { el, hass, ended } = await talking();
+    // The preview feature was turned off; the next answer says so.
+    hass.respond("camera/capabilities", () => ({
+      frontend_stream_types: ["web_rtc"],
+      two_way_audio: false,
+    }));
+    el.hass = { ...hass, config: { state: "NOT_RUNNING" } };
+    await settle(el);
+    expect(ended()).toBe(false);
+    el.hass = { ...hass, config: { state: "RUNNING" } };
+    await settle(el);
+    await settle(el);
+    // The button is gone, so the microphone must be too.
+    expect(ended()).toBe(true);
+    expect(state(el)).toBe("unsupported");
+    expect(el.shadowRoot!.querySelector("#talk")).toBeNull();
     expect(toasts).toEqual([]);
   });
 
@@ -441,7 +477,7 @@ describe("stop conditions", () => {
 
   it("stops when another feature starts", async () => {
     const { el: first, hass, ended } = await talking();
-    const second = await mount(hass, { type: TYPE, entity: "camera.yard" });
+    const second = await mount(hass, { entity_id: "camera.yard" });
     await clickToConnect(second);
     await settle(first);
     expect(ended()).toBe(true);

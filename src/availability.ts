@@ -1,15 +1,9 @@
-import type { CameraCapabilities } from "./camera-api";
-import type {
-  ExternalBus,
-  FeatureContext,
-  PushToTalkFeatureConfig,
-} from "./ha-types";
+import type { ExternalBus, FeatureContext, HassEntity } from "./ha-types";
 
 /** Who captures the microphone: the browser, the Home Assistant app, or nobody. */
 export type MicrophoneMode = "browser" | "app" | "none";
 
-export type CantTalkReason =
-  "no_camera" | "not_supported" | "not_secure" | "microphone_denied";
+export type CantTalkReason = "not_secure" | "microphone_denied";
 
 /**
  * Browsers only allow microphone access in a secure context (HTTPS). Without
@@ -27,35 +21,28 @@ export function microphoneMode(env: {
     : "none";
 }
 
-const isCamera = (entityId?: string): entityId is string =>
-  Boolean(entityId?.startsWith("camera."));
-
-/** The feature's own camera, or the host card's entity when that is a camera. */
-export function resolveCamera(
-  config: PushToTalkFeatureConfig | undefined,
+/** The camera this feature talks to: the tile's own entity, when it is one. */
+export function tileCamera(
   context: FeatureContext | undefined,
 ): string | undefined {
-  if (config?.entity) {
-    return config.entity;
-  }
-  return isCamera(context?.entity_id) ? context.entity_id : undefined;
+  const entityId = context?.entity_id;
+  return entityId?.startsWith("camera.") ? entityId : undefined;
 }
 
-/** Why talking is not possible right now, or undefined when it is. */
+// CameraEntityFeature.STREAM in Home Assistant.
+const FEATURE_STREAM = 2;
+
+/** Home Assistant only offers two-way audio for a camera that can stream. */
+export function canStream(stateObj: HassEntity | undefined): boolean {
+  const features = stateObj?.attributes.supported_features;
+  return typeof features === "number" && (features & FEATURE_STREAM) !== 0;
+}
+
+/** Why a camera that supports talking cannot be talked to right now. */
 export function cantTalkReason(input: {
-  cameraId?: string;
-  cameraExists: boolean;
-  /** Undefined while still loading: not a reason by itself. */
-  capabilities?: CameraCapabilities;
   mode: MicrophoneMode;
   microphoneDenied: boolean;
 }): CantTalkReason | undefined {
-  if (!input.cameraId || !input.cameraExists) {
-    return "no_camera";
-  }
-  if (input.capabilities && !input.capabilities.two_way_audio) {
-    return "not_supported";
-  }
   if (input.mode === "none") {
     return "not_secure";
   }

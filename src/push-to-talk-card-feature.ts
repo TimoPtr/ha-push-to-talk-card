@@ -3,12 +3,14 @@ import { css, html, LitElement, nothing, type PropertyValues } from "lit";
 import { property, query, state } from "lit/decorators.js";
 import { watchAudioLevel } from "./audio-level";
 import {
+  canStream,
   cantTalkReason,
   microphoneMode,
-  resolveCamera,
+  tileCamera,
   type CantTalkReason,
 } from "./availability";
-import { fetchCameraCapabilities, type CameraCapabilities } from "./camera-api";
+import type { CameraCapabilities } from "./camera-api";
+import { knownCapabilities, loadCapabilities } from "./capabilities";
 import type { TalkError } from "./errors";
 import type {
   FeatureContext,
@@ -28,7 +30,10 @@ import { openAudioConnection } from "./signalling";
 export const FEATURE_TAG = "push-to-talk-card-feature";
 
 /** What the button shows. The first three follow the talk session. */
-type ViewState = TalkState | "cant-talk" | "unavailable";
+type ButtonState = TalkState | "cant-talk" | "unavailable";
+
+/** "unsupported": this tile cannot talk, so nothing is drawn at all. */
+type ViewState = ButtonState | "unsupported";
 
 const UNAVAILABLE = "unavailable";
 
@@ -79,7 +84,7 @@ export function computeActiveColor(color?: string): string {
   return THEME_COLORS.has(color) ? `var(--${color}-color)` : color;
 }
 
-const LABELS: Record<ViewState, TranslationKey> = {
+const LABELS: Record<ButtonState, TranslationKey> = {
   idle: "button.talk",
   connecting: "button.connecting",
   talking: "button.stop",
@@ -87,7 +92,7 @@ const LABELS: Record<ViewState, TranslationKey> = {
   unavailable: "button.talk",
 };
 
-const ICONS: Record<Exclude<ViewState, "connecting">, string> = {
+const ICONS: Record<Exclude<ButtonState, "connecting">, string> = {
   idle: mdiMicrophone,
   talking: mdiStop,
   "cant-talk": mdiMicrophoneOff,
@@ -95,10 +100,13 @@ const ICONS: Record<Exclude<ViewState, "connecting">, string> = {
 };
 
 /**
- * A talk button for the tile card: one tap to hear and speak to a camera.
+ * A talk button for the tile card: one tap to hear and speak to the tile's
+ * camera.
  *
  * Shaped as a card feature: the host card assigns `hass`, `context` and
- * `color`, and the element knows nothing else about the card around it.
+ * `color`, and the element knows nothing else about the card around it. Like
+ * the built-in features, it draws nothing on a tile it cannot serve: one that
+ * is not for a camera, or whose camera has no two-way audio.
  */
 export class PushToTalkCardFeature extends LitElement {
   @property({ attribute: false }) public hass?: HomeAssistant;
@@ -153,32 +161,9 @@ export class PushToTalkCardFeature extends LitElement {
     },
   );
 
-  public static getStubConfig(
-    hass: HomeAssistant,
-    context?: FeatureContext,
-  ): PushToTalkFeatureConfig {
-    const config = { type: `custom:${FEATURE_TAG}` };
-    if (resolveCamera(config, context)) {
-      return config;
-    }
-    const firstCamera = Object.keys(hass.states)
-      .filter((entityId) => entityId.startsWith("camera."))
-      .sort()[0];
-    return firstCamera ? { ...config, entity: firstCamera } : config;
-  }
-
-  public static getConfigForm() {
-    return {
-      schema: [{ name: "entity", selector: { entity: { domain: "camera" } } }],
-    };
-  }
-
   public setConfig(config: PushToTalkFeatureConfig): void {
     if (!config) {
       throw new Error("Invalid configuration");
-    }
-    if (config.entity && !config.entity.startsWith("camera.")) {
-      throw new Error("The entity must be a camera");
     }
     this._config = config;
   }
@@ -228,9 +213,9 @@ export class PushToTalkCardFeature extends LitElement {
     }
   };
 
-  /** The camera to talk to: the feature's own, or the host card's entity. */
+  /** The camera to talk to: the host card's entity, when it is one. */
   private get _cameraId(): string | undefined {
-    return resolveCamera(this._config, this.context);
+    return tileCamera(this.context);
   }
 
   private get _cameraState(): string | undefined {
@@ -245,11 +230,22 @@ export class PushToTalkCardFeature extends LitElement {
     });
   }
 
+  /**
+   * Whether this tile can talk at all: its entity is a camera that streams,
+   * and Home Assistant did not say it has no two-way audio. Not having the
+   * answer yet counts as a yes.
+   */
+  private get _supported(): boolean {
+    const cameraId = this._cameraId;
+    return (
+      cameraId !== undefined &&
+      canStream(this.hass?.states[cameraId]) &&
+      this._capabilities?.two_way_audio !== false
+    );
+  }
+
   private get _reason(): CantTalkReason | undefined {
     return cantTalkReason({
-      cameraId: this._cameraId,
-      cameraExists: this._cameraState !== undefined,
-      capabilities: this._capabilities,
       mode: this._microphoneMode,
       microphoneDenied: isMicrophoneDenied(),
     });
@@ -258,6 +254,9 @@ export class PushToTalkCardFeature extends LitElement {
   private get _viewState(): ViewState {
     if (this._talkState !== "idle") {
       return this._talkState;
+    }
+    if (!this._supported) {
+      return "unsupported";
     }
     if (this._cameraState === UNAVAILABLE) {
       return "unavailable";
@@ -277,17 +276,20 @@ export class PushToTalkCardFeature extends LitElement {
     }
   }
 
-  /** A session does not outlive its camera or the Home Assistant connection. */
+  /**
+   * A session does not outlive its camera or the Home Assistant connection.
+   * It also ends when the tile turns out not to support talking: the button
+   * is no longer drawn then, and the microphone must never stay open unseen.
+   */
   private _stopIfCameraGone() {
     if (this._session.state === "idle") {
       return;
     }
-    const cameraState = this._cameraState;
     if (
       this._cameraId !== this._talkingTo ||
       !this.hass?.connected ||
-      cameraState === undefined ||
-      cameraState === UNAVAILABLE
+      !this._supported ||
+      this._cameraState === UNAVAILABLE
     ) {
       this._session.stop();
     }
@@ -302,12 +304,14 @@ export class PushToTalkCardFeature extends LitElement {
     const hass = this.hass;
     const cameraId = this._cameraId;
     const target =
-      hass?.connected && cameraId && hass.states[cameraId]
+      hass?.connected && cameraId && canStream(hass.states[cameraId])
         ? cameraId
         : undefined;
     if (target !== this._capabilitiesFor) {
       this._capabilitiesFor = target;
-      this._capabilities = undefined;
+      // What is already known about the camera applies at once, and stays
+      // while Home Assistant is disconnected.
+      this._capabilities = cameraId ? knownCapabilities(cameraId) : undefined;
       this._capabilitiesLoading = undefined;
       this._refreshCapabilities();
       return;
@@ -330,7 +334,7 @@ export class PushToTalkCardFeature extends LitElement {
     if (!hass || !target) {
       return undefined;
     }
-    const loading = fetchCameraCapabilities(hass, target).then(
+    const loading = loadCapabilities(hass, target).then(
       (capabilities) => {
         if (this._capabilitiesFor === target) {
           this._capabilities = capabilities;
@@ -353,6 +357,9 @@ export class PushToTalkCardFeature extends LitElement {
       return nothing;
     }
     const view = this._viewState;
+    if (view === "unsupported") {
+      return nothing;
+    }
     const talking = view === "talking";
     return html`
       <audio autoplay></audio>
@@ -385,13 +392,10 @@ export class PushToTalkCardFeature extends LitElement {
     if (!this.hass || this._viewState === "unavailable") {
       return;
     }
-    if (this._capabilities && !this._capabilities.two_way_audio) {
-      // A "no" learned earlier may be out of date: the user is often tapping
-      // right after turning the feature on in Labs. Ask again before saying no.
-      await this._refreshCapabilities();
-    } else {
-      // A click that comes before the first answer waits for it.
-      await this._capabilitiesLoading;
+    // A click that comes before the first answer waits for it.
+    await this._capabilitiesLoading;
+    if (!this._supported) {
+      return;
     }
     let reason = this._reason;
     if (

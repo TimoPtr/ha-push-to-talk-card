@@ -3,8 +3,6 @@
   "button.talk": "Talk",
   "button.connecting": "Connecting…",
   "button.stop": "Stop",
-  "reason.no_camera": "Select a camera in the settings of this feature to talk.",
-  "reason.not_supported": "This camera does not support two-way audio, or the two-way audio preview feature is turned off in Labs.",
   "reason.not_secure": "Your browser blocks the microphone because your connection to Home Assistant is not secured using HTTPS. Use the Home Assistant app, or set up a secure connection.",
   "reason.microphone_denied": "Microphone access was denied. Allow it in your browser or device settings, then tap again to talk to this camera.",
   "error.microphone_failed": "Could not access the microphone: {message}",

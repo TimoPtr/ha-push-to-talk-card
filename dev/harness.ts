@@ -229,7 +229,8 @@ function loopbackHass(): HomeAssistant {
       [CAMERA]: {
         entity_id: CAMERA,
         state: scenario === "unavailable" ? "unavailable" : "idle",
-        attributes: {},
+        // CameraEntityFeature.STREAM
+        attributes: { supported_features: 2 },
       },
     },
     connected: true,
@@ -240,7 +241,7 @@ function loopbackHass(): HomeAssistant {
         case "camera/capabilities":
           return {
             frontend_stream_types: ["web_rtc"],
-            two_way_audio: scenario !== "cant-talk",
+            two_way_audio: true,
           } as T;
         case "camera/webrtc/get_client_config":
           if (scenario === "connecting") {
@@ -303,6 +304,14 @@ if (params.has("hold")) {
   hold.hidden = true;
   hold.src = `/dev/wait?ms=${Number(params.get("hold"))}`;
   document.body.append(hold);
+}
+
+if (scenario === "cant-talk") {
+  // As when Home Assistant is opened over plain HTTP outside the app.
+  Object.defineProperty(window, "isSecureContext", {
+    value: false,
+    configurable: true,
+  });
 }
 
 document.documentElement.dataset.theme = params.get("theme") ?? "light";

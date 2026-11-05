@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  canStream,
   cantTalkReason,
   microphoneMode,
-  resolveCamera,
+  tileCamera,
 } from "../src/availability";
 import type { ExternalBus } from "../src/ha-types";
 
@@ -12,7 +13,6 @@ const bus = (config: ExternalBus["config"]): ExternalBus => ({
   fireMessage: () => undefined,
 });
 const supportingBus = bus({ webrtc: { hasCameraMicrophoneStream: true } });
-const TYPE = "custom:push-to-talk-card-feature";
 
 describe("microphoneMode", () => {
   it("is browser in a secure context, even inside the app", () => {
@@ -42,64 +42,44 @@ describe("microphoneMode", () => {
   });
 });
 
-describe("resolveCamera", () => {
-  it("prefers the feature's entity", () => {
-    expect(
-      resolveCamera(
-        { type: TYPE, entity: "camera.a" },
-        { entity_id: "camera.b" },
-      ),
-    ).toBe("camera.a");
+describe("tileCamera", () => {
+  it("is the tile's entity when it is a camera", () => {
+    expect(tileCamera({ entity_id: "camera.b" })).toBe("camera.b");
   });
 
-  it("falls back to the host entity when it is a camera", () => {
-    expect(resolveCamera({ type: TYPE }, { entity_id: "camera.b" })).toBe(
-      "camera.b",
-    );
+  it("is undefined on a tile for another entity", () => {
+    expect(tileCamera({ entity_id: "lock.door" })).toBeUndefined();
   });
 
-  it("ignores a host entity that is not a camera", () => {
-    expect(
-      resolveCamera({ type: TYPE }, { entity_id: "lock.door" }),
-    ).toBeUndefined();
+  it("is undefined without a context or an entity", () => {
+    expect(tileCamera(undefined)).toBeUndefined();
+    expect(tileCamera({})).toBeUndefined();
+    expect(tileCamera({ area_id: "x" })).toBeUndefined();
+  });
+});
+
+describe("canStream", () => {
+  const camera = (attributes: Record<string, unknown>) => ({
+    entity_id: "camera.door",
+    state: "idle",
+    attributes,
   });
 
-  it("treats an empty entity as unset", () => {
-    expect(
-      resolveCamera({ type: TYPE, entity: "" }, { entity_id: "camera.b" }),
-    ).toBe("camera.b");
+  it("is true when the camera has the stream feature", () => {
+    expect(canStream(camera({ supported_features: 2 }))).toBe(true);
+    expect(canStream(camera({ supported_features: 3 }))).toBe(true);
   });
 
-  it("returns undefined without config, context or entity", () => {
-    expect(resolveCamera(undefined, undefined)).toBeUndefined();
-    expect(resolveCamera({ type: TYPE }, { area_id: "x" })).toBeUndefined();
+  it("is false without the stream feature", () => {
+    expect(canStream(camera({ supported_features: 1 }))).toBe(false);
+    expect(canStream(camera({ supported_features: 0 }))).toBe(false);
+    expect(canStream(camera({}))).toBe(false);
+    expect(canStream(undefined)).toBe(false);
   });
 });
 
 describe("cantTalkReason", () => {
-  const ok = {
-    cameraId: "camera.door",
-    cameraExists: true,
-    capabilities: { frontend_stream_types: ["web_rtc"], two_way_audio: true },
-    mode: "browser" as const,
-    microphoneDenied: false,
-  };
-  const unsupported = { ...ok.capabilities, two_way_audio: false };
-
-  it("is no_camera when no camera is resolved or it does not exist", () => {
-    expect(cantTalkReason({ ...ok, cameraId: undefined })).toBe("no_camera");
-    expect(cantTalkReason({ ...ok, cameraExists: false })).toBe("no_camera");
-  });
-
-  it("is undefined while capabilities are still loading", () => {
-    expect(cantTalkReason({ ...ok, capabilities: undefined })).toBeUndefined();
-  });
-
-  it("is not_supported when two_way_audio is false", () => {
-    expect(cantTalkReason({ ...ok, capabilities: unsupported })).toBe(
-      "not_supported",
-    );
-  });
+  const ok = { mode: "browser" as const, microphoneDenied: false };
 
   it("is not_secure when the mode is none", () => {
     expect(cantTalkReason({ ...ok, mode: "none" })).toBe("not_secure");
@@ -113,24 +93,14 @@ describe("cantTalkReason", () => {
 
   it("ignores an earlier browser refusal when the app sends the microphone", () => {
     expect(
-      cantTalkReason({ ...ok, mode: "app", microphoneDenied: true }),
+      cantTalkReason({ mode: "app", microphoneDenied: true }),
     ).toBeUndefined();
   });
 
-  it("checks in the order no_camera, not_supported, not_secure, microphone_denied", () => {
-    const all = {
-      cameraId: undefined as string | undefined,
-      cameraExists: false,
-      capabilities: unsupported,
-      mode: "none" as const,
-      microphoneDenied: true,
-    };
-    expect(cantTalkReason(all)).toBe("no_camera");
-    const withCamera = { ...all, cameraId: "camera.door", cameraExists: true };
-    expect(cantTalkReason(withCamera)).toBe("not_supported");
-    expect(
-      cantTalkReason({ ...withCamera, capabilities: ok.capabilities }),
-    ).toBe("not_secure");
+  it("is not_secure before microphone_denied", () => {
+    expect(cantTalkReason({ mode: "none", microphoneDenied: true })).toBe(
+      "not_secure",
+    );
   });
 
   it("is undefined when everything is fine", () => {

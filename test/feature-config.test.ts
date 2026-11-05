@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { resetKnownCapabilities } from "../src/capabilities";
 import type {
   FeatureContext,
   HomeAssistant,
@@ -16,6 +17,7 @@ import fr from "../src/translations/fr.json";
 import { cameraState, fakeHass, type FakeHass } from "./fakes";
 
 const TYPE = "custom:push-to-talk-card-feature";
+const DOOR: FeatureContext = { entity_id: "camera.door" };
 const features = () =>
   (window as { customCardFeatures?: CustomCardFeatureEntry[] })
     .customCardFeatures;
@@ -25,13 +27,10 @@ const settle = async (el: PushToTalkCardFeature) => {
   await el.updateComplete;
 };
 
-async function mount(
-  config: PushToTalkFeatureConfig,
-  hass: HomeAssistant,
-  context?: FeatureContext,
-) {
+/** Puts the feature on a tile: by default the tile of the door camera. */
+async function mount(hass: HomeAssistant, context: FeatureContext = DOOR) {
   const el = document.createElement(FEATURE_TAG) as PushToTalkCardFeature;
-  el.setConfig(config);
+  el.setConfig({ type: TYPE });
   el.hass = hass;
   el.context = context;
   document.body.append(el);
@@ -62,6 +61,9 @@ const doorHass = (init: Parameters<typeof fakeHass>[0] = {}) =>
     states: {
       "camera.door": cameraState("camera.door"),
       "camera.yard": cameraState("camera.yard"),
+      "camera.picture": cameraState("camera.picture", "idle", {
+        supported_features: 1,
+      }),
       "lock.door": { entity_id: "lock.door", state: "locked", attributes: {} },
     },
     ...init,
@@ -84,6 +86,7 @@ beforeEach(() => {
 afterEach(() => {
   document.body.replaceChildren();
   resetMicrophoneDenied();
+  resetKnownCapabilities();
   delete (navigator as { mediaDevices?: unknown }).mediaDevices;
   delete (navigator as { permissions?: unknown }).permissions;
 });
@@ -95,13 +98,33 @@ describe("registration", () => {
     expect(entries[0]).toMatchObject({
       type: "push-to-talk-card-feature",
       name: "Push to talk",
-      configurable: true,
     });
+    // Nothing to set up: the camera is the tile's own entity.
+    expect(entries[0].configurable).toBeFalsy();
+  });
+
+  it("is offered on a camera tile only", () => {
+    const { isSupported } = features()!.find(
+      (entry) => entry.type === FEATURE_TAG,
+    )!;
     const hass = doorHass();
-    expect(entries[0].isSupported!(hass, { entity_id: "lock.door" })).toBe(
-      true,
-    );
-    expect(entries[0].isSupported!(hass, {})).toBe(true);
+    expect(isSupported!(hass, DOOR)).toBe(true);
+    expect(isSupported!(hass, { entity_id: "lock.door" })).toBe(false);
+    expect(isSupported!(hass, { area_id: "x" })).toBe(false);
+  });
+
+  it("is not offered for a camera without two-way audio", async () => {
+    const { isSupported } = features()!.find(
+      (entry) => entry.type === FEATURE_TAG,
+    )!;
+    const hass = doorHass();
+    hass.respond("camera/capabilities", () => ({
+      frontend_stream_types: ["web_rtc"],
+      two_way_audio: false,
+    }));
+    isSupported!(hass, DOOR);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(isSupported!(hass, DOOR)).toBe(false);
   });
 
   it("creates the list when Home Assistant has not yet", () => {
@@ -124,54 +147,20 @@ describe("configuration", () => {
   const element = () =>
     document.createElement(FEATURE_TAG) as PushToTalkCardFeature;
 
-  it("accepts a configuration with or without a camera", () => {
+  it("needs no setting", () => {
     expect(() => element().setConfig({ type: TYPE })).not.toThrow();
-    expect(() =>
-      element().setConfig({ type: TYPE, entity: "camera.door" }),
-    ).not.toThrow();
-    expect(() => element().setConfig({ type: TYPE, entity: "" })).not.toThrow();
-  });
-
-  it("rejects an entity that is not a camera", () => {
-    expect(() =>
-      element().setConfig({ type: TYPE, entity: "light.kitchen" }),
-    ).toThrow(/camera/);
     expect(() =>
       element().setConfig(undefined as unknown as PushToTalkFeatureConfig),
     ).toThrow();
   });
 
-  it("getStubConfig leaves the camera out on a camera tile", () => {
-    expect(
-      PushToTalkCardFeature.getStubConfig(doorHass(), {
-        entity_id: "camera.yard",
-      }),
-    ).toEqual({ type: TYPE });
-  });
-
-  it("getStubConfig picks the first camera on another tile", () => {
-    expect(
-      PushToTalkCardFeature.getStubConfig(doorHass(), {
-        entity_id: "lock.door",
-      }),
-    ).toEqual({ type: TYPE, entity: "camera.door" });
-  });
-
-  it("getStubConfig leaves the camera out when there is none", () => {
-    expect(
-      PushToTalkCardFeature.getStubConfig(fakeHass(), {
-        entity_id: "lock.door",
-      }),
-    ).toEqual({ type: TYPE });
-    expect(PushToTalkCardFeature.getStubConfig(fakeHass())).toEqual({
-      type: TYPE,
-    });
-  });
-
-  it("getConfigForm is one camera picker", () => {
-    expect(PushToTalkCardFeature.getConfigForm()).toEqual({
-      schema: [{ name: "entity", selector: { entity: { domain: "camera" } } }],
-    });
+  it("has no settings form and no stub config of its own", () => {
+    const featureClass = PushToTalkCardFeature as unknown as Record<
+      string,
+      unknown
+    >;
+    expect(featureClass.getConfigForm).toBeUndefined();
+    expect(featureClass.getStubConfig).toBeUndefined();
   });
 
   it("computes the colour used while talking", () => {
@@ -187,63 +176,91 @@ describe("configuration", () => {
 
 describe("resting states", () => {
   it("shows Talk when the camera can talk", async () => {
-    const el = await mount({ type: TYPE, entity: "camera.door" }, doorHass());
+    const el = await mount(doorHass());
     expect(el.getAttribute("state")).toBe("idle");
     expect(label(el)).toBe("Talk");
     expect(button(el).disabled).toBe(false);
   });
 
-  it("uses the tile's camera when none is configured", async () => {
+  it("talks to the tile's camera", async () => {
     const hass = doorHass();
-    await mount({ type: TYPE }, hass, { entity_id: "camera.door" });
+    await mount(hass, { entity_id: "camera.yard" });
     expect(capabilityCalls(hass)).toEqual([
-      { type: "camera/capabilities", entity_id: "camera.door" },
+      { type: "camera/capabilities", entity_id: "camera.yard" },
     ]);
   });
 
-  it("uses the configured camera on another tile", async () => {
+  it.each<[string, FeatureContext]>([
+    ["a tile for another entity", { entity_id: "lock.door" }],
+    ["a camera that does not exist", { entity_id: "camera.gone" }],
+    ["a camera that cannot stream", { entity_id: "camera.picture" }],
+    ["a card without an entity", { area_id: "x" }],
+  ])("draws nothing on %s", async (_name, context) => {
     const hass = doorHass();
-    await mount({ type: TYPE, entity: "camera.door" }, hass, {
-      entity_id: "lock.door",
-    });
-    expect(capabilityCalls(hass)).toEqual([
-      { type: "camera/capabilities", entity_id: "camera.door" },
-    ]);
+    const el = await mount(hass, context);
+    expect(el.shadowRoot!.querySelector("#talk")).toBeNull();
+    expect(el.getAttribute("state")).toBe("unsupported");
+    expect(hass.calls).toEqual([]);
   });
 
-  it("is muted and explains itself when the camera cannot do two-way audio", async () => {
+  it("draws nothing for a camera without two-way audio", async () => {
     const hass = doorHass();
     hass.respond("camera/capabilities", () => ({
       frontend_stream_types: ["web_rtc"],
       two_way_audio: false,
     }));
-    const el = await mount({ type: TYPE, entity: "camera.door" }, hass);
-    expect(el.getAttribute("state")).toBe("cant-talk");
-    expect(button(el).disabled).toBe(false);
-
-    const toasts = await clickForToasts(el);
-    expect(toasts).toHaveLength(1);
-    expect(toasts[0].detail.message).toBe(
-      localize(hass, "reason.not_supported"),
-    );
-    expect(toasts[0].bubbles).toBe(true);
-    expect(toasts[0].composed).toBe(true);
-    expect(getUserMedia).not.toHaveBeenCalled();
+    const el = await mount(hass);
+    expect(el.shadowRoot!.querySelector("#talk")).toBeNull();
+    expect(el.getAttribute("state")).toBe("unsupported");
   });
 
-  it.each<[string, PushToTalkFeatureConfig, FeatureContext]>([
-    ["a tile for another entity", { type: TYPE }, { entity_id: "lock.door" }],
-    ["a deleted camera", { type: TYPE, entity: "camera.gone" }, {}],
-    ["a host without an entity", { type: TYPE }, { area_id: "x" }],
-  ])("explains a missing camera on %s", async (_name, config, context) => {
+  it("stays hidden while Home Assistant is disconnected", async () => {
     const hass = doorHass();
-    const el = await mount(config, hass, context);
-    expect(el.getAttribute("state")).toBe("cant-talk");
-    const toasts = await clickForToasts(el);
-    expect(toasts.map((toast) => toast.detail.message)).toEqual([
-      localize(hass, "reason.no_camera"),
-    ]);
-    expect(hass.calls).toEqual([]);
+    hass.respond("camera/capabilities", () => ({
+      frontend_stream_types: ["web_rtc"],
+      two_way_audio: false,
+    }));
+    const el = await mount(hass);
+    el.hass = { ...hass, connected: false };
+    await settle(el);
+    expect(el.shadowRoot!.querySelector("#talk")).toBeNull();
+    expect(el.getAttribute("state")).toBe("unsupported");
+  });
+
+  it("shows the button while Home Assistant has not answered yet", async () => {
+    const hass = doorHass();
+    hass.respond("camera/capabilities", () => new Promise(() => undefined));
+    const el = await mount(hass);
+    expect(el.getAttribute("state")).toBe("idle");
+    expect(label(el)).toBe("Talk");
+  });
+
+  it("shows the button when Home Assistant cannot answer", async () => {
+    const hass = doorHass();
+    hass.respond("camera/capabilities", () => {
+      throw new Error("unknown command");
+    });
+    const el = await mount(hass);
+    expect(el.getAttribute("state")).toBe("idle");
+  });
+
+  it("starts from what is already known about the camera", async () => {
+    const hass = doorHass();
+    hass.respond("camera/capabilities", () => ({
+      frontend_stream_types: ["web_rtc"],
+      two_way_audio: false,
+    }));
+    await mount(hass);
+
+    // A second tile for the same camera: nothing flashes while it asks.
+    hass.respond("camera/capabilities", () => new Promise(() => undefined));
+    const el = document.createElement(FEATURE_TAG) as PushToTalkCardFeature;
+    el.setConfig({ type: TYPE });
+    el.hass = hass;
+    el.context = DOOR;
+    document.body.append(el);
+    await el.updateComplete;
+    expect(el.shadowRoot!.querySelector("#talk")).toBeNull();
   });
 
   it("explains an insecure page without app support", async () => {
@@ -252,7 +269,7 @@ describe("resting states", () => {
       configurable: true,
     });
     const hass = doorHass();
-    const el = await mount({ type: TYPE, entity: "camera.door" }, hass);
+    const el = await mount(hass);
     expect(el.getAttribute("state")).toBe("cant-talk");
     const toasts = await clickForToasts(el);
     expect(toasts.map((toast) => toast.detail.message)).toEqual([
@@ -270,7 +287,7 @@ describe("resting states", () => {
       configurable: true,
     });
     const hass = doorHass();
-    const el = await mount({ type: TYPE, entity: "camera.door" }, hass);
+    const el = await mount(hass);
     expect(el.getAttribute("state")).toBe("cant-talk");
     const toasts = await clickForToasts(el);
     expect(toasts.map((toast) => toast.detail.message)).toEqual([
@@ -283,7 +300,7 @@ describe("resting states", () => {
     const hass = fakeHass({
       states: { "camera.door": cameraState("camera.door", "unavailable") },
     });
-    const el = await mount({ type: TYPE, entity: "camera.door" }, hass);
+    const el = await mount(hass);
     expect(el.getAttribute("state")).toBe("unavailable");
     expect(button(el).disabled).toBe(true);
     expect(await clickForToasts(el)).toEqual([]);
@@ -291,7 +308,7 @@ describe("resting states", () => {
 
   it("asks for capabilities once however often hass changes", async () => {
     const hass = doorHass();
-    const el = await mount({ type: TYPE, entity: "camera.door" }, hass);
+    const el = await mount(hass);
     for (let i = 0; i < 50; i++) {
       el.hass = { ...hass, states: { ...hass.states } };
       await el.updateComplete;
@@ -302,8 +319,8 @@ describe("resting states", () => {
 
   it("asks again when the camera changes", async () => {
     const hass = doorHass();
-    const el = await mount({ type: TYPE, entity: "camera.door" }, hass);
-    el.setConfig({ type: TYPE, entity: "camera.yard" });
+    const el = await mount(hass);
+    el.context = { entity_id: "camera.yard" };
     await settle(el);
     expect(capabilityCalls(hass).map((call) => call.entity_id)).toEqual([
       "camera.door",
@@ -313,7 +330,7 @@ describe("resting states", () => {
 
   it("asks again when the connection comes back", async () => {
     const hass = doorHass();
-    const el = await mount({ type: TYPE, entity: "camera.door" }, hass);
+    const el = await mount(hass);
     el.hass = { ...hass, connected: false };
     await settle(el);
     expect(capabilityCalls(hass)).toHaveLength(1);
@@ -322,27 +339,28 @@ describe("resting states", () => {
     expect(capabilityCalls(hass)).toHaveLength(2);
   });
 
-  it("asks again when tapped after a no, and no longer complains once it is a yes", async () => {
+  it("appears once two-way audio was turned on and the view is shown again", async () => {
     const hass = doorHass();
     let twoWayAudio = false;
     hass.respond("camera/capabilities", () => ({
       frontend_stream_types: ["web_rtc"],
       two_way_audio: twoWayAudio,
     }));
-    const el = await mount({ type: TYPE, entity: "camera.door" }, hass);
-    expect(el.getAttribute("state")).toBe("cant-talk");
+    const el = await mount(hass);
+    expect(el.shadowRoot!.querySelector("#talk")).toBeNull();
 
     // The user turned the preview feature on in Labs and came back.
     twoWayAudio = true;
-    const toasts = await clickForToasts(el);
-    expect(capabilityCalls(hass)).toHaveLength(2);
-    expect(toasts).toEqual([]);
-    expect(getUserMedia).toHaveBeenCalledTimes(1);
+    el.remove();
+    document.body.append(el);
+    await settle(el);
+    expect(el.getAttribute("state")).toBe("idle");
+    expect(label(el)).toBe("Talk");
   });
 
   it("asks again when it is put back on the page", async () => {
     const hass = doorHass();
-    const el = await mount({ type: TYPE, entity: "camera.door" }, hass);
+    const el = await mount(hass);
     el.remove();
     document.body.append(el);
     await settle(el);
@@ -351,10 +369,7 @@ describe("resting states", () => {
 
   it("asks again when Home Assistant has finished starting", async () => {
     const hass = doorHass();
-    const el = await mount(
-      { type: TYPE, entity: "camera.door" },
-      { ...hass, config: { state: "NOT_RUNNING" } },
-    );
+    const el = await mount({ ...hass, config: { state: "NOT_RUNNING" } });
     expect(capabilityCalls(hass)).toHaveLength(1);
     el.hass = { ...hass, config: { state: "RUNNING" } };
     await settle(el);
@@ -372,8 +387,8 @@ describe("resting states", () => {
         ? new Promise((resolve) => (releaseDoor = resolve))
         : { frontend_stream_types: ["web_rtc"], two_way_audio: true },
     );
-    const el = await mount({ type: TYPE, entity: "camera.door" }, hass);
-    el.setConfig({ type: TYPE, entity: "camera.yard" });
+    const el = await mount(hass);
+    el.context = { entity_id: "camera.yard" };
     await settle(el);
     releaseDoor({ frontend_stream_types: [], two_way_audio: false });
     await settle(el);
@@ -381,10 +396,7 @@ describe("resting states", () => {
   });
 
   it("renders in French for a French user", async () => {
-    const el = await mount(
-      { type: TYPE, entity: "camera.door" },
-      doorHass({ language: "fr" }),
-    );
+    const el = await mount(doorHass({ language: "fr" }));
     expect(label(el)).toBe(fr["button.talk"]);
   });
 

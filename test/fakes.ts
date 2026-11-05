@@ -21,8 +21,13 @@ export interface FakeHass extends HomeAssistant {
   failSubscribe?: Error;
 }
 
-export function cameraState(entityId: string, state = "idle"): HassEntity {
-  return { entity_id: entityId, state, attributes: {} };
+/** A camera that can stream, unless other attributes are given. */
+export function cameraState(
+  entityId: string,
+  state = "idle",
+  attributes: Record<string, unknown> = { supported_features: 2 },
+): HassEntity {
+  return { entity_id: entityId, state, attributes };
 }
 
 export function fakeHass(
