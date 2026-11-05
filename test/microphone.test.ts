@@ -91,15 +91,20 @@ describe("recheckMicrophonePermission", () => {
     expect(isMicrophoneDenied()).toBe(true);
   });
 
-  it("keeps the refusal when the permission cannot be queried", async () => {
+  it("allows one retry when the permission cannot be queried", async () => {
     await getBrowserMicrophone(refusing).catch(() => undefined);
     const failing = {
       query: () => Promise.reject(new TypeError("unknown permission")),
     } as unknown as Permissions;
-    expect(await recheckMicrophonePermission(failing)).toBe(false);
+    expect(await recheckMicrophonePermission(failing)).toBe(true);
+    expect(isMicrophoneDenied()).toBe(false);
+  });
+
+  it("allows one retry where there is no Permissions API", async () => {
+    await getBrowserMicrophone(refusing).catch(() => undefined);
     expect(navigator.permissions).toBeUndefined();
-    expect(await recheckMicrophonePermission()).toBe(false);
-    expect(isMicrophoneDenied()).toBe(true);
+    expect(await recheckMicrophonePermission()).toBe(true);
+    expect(isMicrophoneDenied()).toBe(false);
   });
 });
 

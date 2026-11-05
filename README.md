@@ -95,7 +95,7 @@ A muted button with a crossed-out microphone means talking is not possible right
 - no camera is selected, or the selected camera no longer exists;
 - the camera does not support two-way audio, or the preview feature is turned off in Labs;
 - Home Assistant is not opened over HTTPS and you are not in a version of the Home Assistant app that can send the microphone;
-- you refused access to the microphone. Allow it in your browser settings and tap again.
+- you refused access to the microphone. Allow it in your browser or device settings and tap again.
 
 ## Limitations
 

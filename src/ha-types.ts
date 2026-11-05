@@ -34,6 +34,8 @@ export interface HomeAssistant {
   connection: HassConnection;
   callWS<T>(message: WsMessage): Promise<T>;
   locale?: { language: string };
+  /** `state` is "RUNNING" once Home Assistant has finished starting. */
+  config?: { state?: string };
   auth: { external?: ExternalBus };
 }
 

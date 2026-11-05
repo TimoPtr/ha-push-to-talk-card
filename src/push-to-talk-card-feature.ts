@@ -32,6 +32,9 @@ type ViewState = TalkState | "cant-talk" | "unavailable";
 
 const UNAVAILABLE = "unavailable";
 
+// `hass.config.state` once Home Assistant has finished starting.
+const STATE_RUNNING = "RUNNING";
+
 // The colour names Home Assistant's cards accept for their `color` option.
 const THEME_COLORS = new Set([
   "primary",
@@ -182,6 +185,11 @@ export class PushToTalkCardFeature extends LitElement {
 
   public override connectedCallback(): void {
     super.connectedCallback();
+    if (this.hasUpdated) {
+      // Put back on the page (dashboards cache their views): what the camera
+      // can do may have changed meanwhile, such as the Labs feature turned on.
+      this._refreshCapabilities();
+    }
     document.addEventListener("visibilitychange", this._handleVisibilityChange);
     window.addEventListener("pagehide", this._hangUp);
     window.addEventListener("hass-more-info", this._handleMoreInfo);
@@ -259,7 +267,7 @@ export class PushToTalkCardFeature extends LitElement {
 
   protected override willUpdate(changedProps: PropertyValues): void {
     super.willUpdate(changedProps);
-    this._updateCapabilities();
+    this._updateCapabilities(changedProps);
     this._stopIfCameraGone();
     if (changedProps.has("color") || !this.hasUpdated) {
       this.style.setProperty(
@@ -290,31 +298,49 @@ export class PushToTalkCardFeature extends LitElement {
    * camera, and again after a reconnect: `hass` changes on every state update
    * in the house.
    */
-  private _updateCapabilities() {
+  private _updateCapabilities(changedProps: PropertyValues) {
     const hass = this.hass;
     const cameraId = this._cameraId;
     const target =
       hass?.connected && cameraId && hass.states[cameraId]
         ? cameraId
         : undefined;
-    if (target === this._capabilitiesFor) {
+    if (target !== this._capabilitiesFor) {
+      this._capabilitiesFor = target;
+      this._capabilities = undefined;
+      this._capabilitiesLoading = undefined;
+      this._refreshCapabilities();
       return;
     }
-    this._capabilitiesFor = target;
-    this._capabilities = undefined;
-    this._capabilitiesLoading = undefined;
+    // An answer given while Home Assistant was still starting can be wrong.
+    const oldHass = changedProps.get("hass") as HomeAssistant | undefined;
+    if (
+      oldHass &&
+      oldHass.config?.state !== STATE_RUNNING &&
+      hass?.config?.state === STATE_RUNNING
+    ) {
+      this._refreshCapabilities();
+    }
+  }
+
+  /** Asks again for the current camera, keeping the last answer meanwhile. */
+  private _refreshCapabilities(): Promise<void> | undefined {
+    const hass = this.hass;
+    const target = this._capabilitiesFor;
     if (!hass || !target) {
-      return;
+      return undefined;
     }
-    this._capabilitiesLoading = fetchCameraCapabilities(hass, target).then(
+    const loading = fetchCameraCapabilities(hass, target).then(
       (capabilities) => {
         if (this._capabilitiesFor === target) {
           this._capabilities = capabilities;
         }
       },
-      // Left unknown: the camera itself answers when the user tries to talk.
+      // Left as it was: the camera itself answers when the user tries to talk.
       () => undefined,
     );
+    this._capabilitiesLoading = loading;
+    return loading;
   }
 
   protected override updated(changedProps: PropertyValues): void {
@@ -359,14 +385,20 @@ export class PushToTalkCardFeature extends LitElement {
     if (!this.hass || this._viewState === "unavailable") {
       return;
     }
-    // A click that comes before the capabilities waits for them.
-    await this._capabilitiesLoading;
+    if (this._capabilities && !this._capabilities.two_way_audio) {
+      // A "no" learned earlier may be out of date: the user is often tapping
+      // right after turning the feature on in Labs. Ask again before saying no.
+      await this._refreshCapabilities();
+    } else {
+      // A click that comes before the first answer waits for it.
+      await this._capabilitiesLoading;
+    }
     let reason = this._reason;
     if (
       reason === "microphone_denied" &&
       (await recheckMicrophonePermission())
     ) {
-      // The user allowed the microphone in the browser settings since.
+      // Not, or no longer, positively denied: worth asking again.
       reason = this._reason;
     }
     if (reason) {
@@ -374,7 +406,12 @@ export class PushToTalkCardFeature extends LitElement {
       return;
     }
     const cameraId = this._cameraId;
-    if (!cameraId || !this.isConnected) {
+    // The user may have left while this click was waiting: never start then.
+    if (
+      !cameraId ||
+      !this.isConnected ||
+      document.visibilityState === "hidden"
+    ) {
       return;
     }
     this._talkingTo = cameraId;
@@ -399,15 +436,20 @@ export class PushToTalkCardFeature extends LitElement {
   private _watchMicrophoneLevel(track: MediaStreamTrack | undefined) {
     this._stopLevel?.();
     this._stopLevel = undefined;
-    this._hasLevel = Boolean(track);
+    this._hasLevel = false;
     if (!track) {
       this._group?.style.removeProperty("--ptt-level");
       return;
     }
-    // Set as a CSS variable instead of state, to not re-render every frame.
-    this._stopLevel = watchAudioLevel(track, (level) => {
-      this._group?.style.setProperty("--ptt-level", String(level));
-    });
+    try {
+      // Set as a CSS variable instead of state, to not re-render every frame.
+      this._stopLevel = watchAudioLevel(track, (level) => {
+        this._group?.style.setProperty("--ptt-level", String(level));
+      });
+      this._hasLevel = true;
+    } catch {
+      // The meter is decoration: talking must work without it.
+    }
   }
 
   private _showError(error: TalkError) {

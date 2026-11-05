@@ -283,6 +283,50 @@ describe("talking", () => {
     expect(toasts).toEqual([localize(hass, "reason.not_supported")]);
   });
 
+  it("does not start in a page that was hidden while it waited", async () => {
+    const hass = doorHass();
+    let release!: (value: unknown) => void;
+    hass.respond(
+      "camera/capabilities",
+      () => new Promise((resolve) => (release = resolve)),
+    );
+    const el = await mount(hass);
+    button(el).click();
+    setVisibility("hidden");
+    release({ frontend_stream_types: ["web_rtc"], two_way_audio: true });
+    await settle(el);
+    await settle(el);
+    expect(getUserMedia).not.toHaveBeenCalled();
+    expect(state(el)).toBe("idle");
+  });
+
+  it("does not start once it was removed from the page while it waited", async () => {
+    const hass = doorHass();
+    let release!: (value: unknown) => void;
+    hass.respond(
+      "camera/capabilities",
+      () => new Promise((resolve) => (release = resolve)),
+    );
+    const el = await mount(hass);
+    button(el).click();
+    el.remove();
+    release({ frontend_stream_types: ["web_rtc"], two_way_audio: true });
+    await settle(el);
+    await settle(el);
+    expect(getUserMedia).not.toHaveBeenCalled();
+  });
+
+  it("still talks when the level meter cannot start", async () => {
+    level.watch.mockImplementation(() => {
+      throw new Error("no audio context");
+    });
+    const hass = doorHass();
+    const el = await mount(hass);
+    await talk(el, hass);
+    expect(toasts).toEqual([]);
+    expect(group(el).classList.contains("no-level")).toBe(true);
+  });
+
   it("reassigning hass does not restart the session", async () => {
     const hass = doorHass();
     const el = await mount(hass);

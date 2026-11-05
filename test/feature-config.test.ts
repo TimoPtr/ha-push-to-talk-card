@@ -322,6 +322,48 @@ describe("resting states", () => {
     expect(capabilityCalls(hass)).toHaveLength(2);
   });
 
+  it("asks again when tapped after a no, and no longer complains once it is a yes", async () => {
+    const hass = doorHass();
+    let twoWayAudio = false;
+    hass.respond("camera/capabilities", () => ({
+      frontend_stream_types: ["web_rtc"],
+      two_way_audio: twoWayAudio,
+    }));
+    const el = await mount({ type: TYPE, entity: "camera.door" }, hass);
+    expect(el.getAttribute("state")).toBe("cant-talk");
+
+    // The user turned the preview feature on in Labs and came back.
+    twoWayAudio = true;
+    const toasts = await clickForToasts(el);
+    expect(capabilityCalls(hass)).toHaveLength(2);
+    expect(toasts).toEqual([]);
+    expect(getUserMedia).toHaveBeenCalledTimes(1);
+  });
+
+  it("asks again when it is put back on the page", async () => {
+    const hass = doorHass();
+    const el = await mount({ type: TYPE, entity: "camera.door" }, hass);
+    el.remove();
+    document.body.append(el);
+    await settle(el);
+    expect(capabilityCalls(hass)).toHaveLength(2);
+  });
+
+  it("asks again when Home Assistant has finished starting", async () => {
+    const hass = doorHass();
+    const el = await mount(
+      { type: TYPE, entity: "camera.door" },
+      { ...hass, config: { state: "NOT_RUNNING" } },
+    );
+    expect(capabilityCalls(hass)).toHaveLength(1);
+    el.hass = { ...hass, config: { state: "RUNNING" } };
+    await settle(el);
+    expect(capabilityCalls(hass)).toHaveLength(2);
+    el.hass = { ...hass, config: { state: "RUNNING" } };
+    await settle(el);
+    expect(capabilityCalls(hass)).toHaveLength(2);
+  });
+
   it("ignores a late answer for a camera that is no longer the current one", async () => {
     const hass = doorHass();
     let releaseDoor!: (value: unknown) => void;

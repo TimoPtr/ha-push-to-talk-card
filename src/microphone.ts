@@ -36,25 +36,23 @@ export async function getBrowserMicrophone(
 }
 
 /**
- * After a refusal, checks whether the user has since allowed the microphone
- * in the browser settings. Returns true, and forgets the refusal, when asking
- * again is worth it.
+ * After a refusal, decides whether asking for the microphone again is worth
+ * it, and forgets the refusal if so. Only a permission that is positively
+ * still denied says no: where the browser cannot tell (no Permissions API, as
+ * in some app web views), one more attempt fails fast and costs nothing.
  */
 export async function recheckMicrophonePermission(
   permissions: Pick<Permissions, "query"> | undefined = navigator.permissions,
 ): Promise<boolean> {
-  if (!permissions) {
-    return false;
-  }
   try {
-    const status = await permissions.query({
+    const status = await permissions?.query({
       name: "microphone" as PermissionName,
     });
-    if (status.state === "denied") {
+    if (status?.state === "denied") {
       return false;
     }
   } catch {
-    return false;
+    // Unknown permission name in this browser: cannot tell.
   }
   microphoneDenied = false;
   return true;
